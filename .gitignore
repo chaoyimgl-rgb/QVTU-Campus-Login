@@ -1,0 +1,40 @@
+# Build outputs
+build/
+
+# Visual Studio / CMake
+.vs/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.slnx
+*.dir/
+x64/
+Debug/
+Release/
+
+# Compiled artifacts
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.tlog/
+*.lnk
+
+# Runtime data
+*.WebView2/
+*.log
+*.tmp
+*.db
+*.sqlite*
+
+# User configuration
+config.dat
+
+# Installer artifacts
+installer/staging/
+installer/output/

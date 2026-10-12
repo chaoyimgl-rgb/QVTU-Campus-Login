@@ -1,0 +1,37 @@
+#include "config.h"
+#include "wifi.h"
+#include <windows.h>
+#include <shlobj.h>
+#include <wrl.h>
+#include <WebView2.h>
+#include <filesystem>
+#include <string>
+using Microsoft::WRL::Callback;
+using Microsoft::WRL::ComPtr;
+namespace fs = std::filesystem;
+
+static HWND gWnd{};
+static ComPtr<ICoreWebView2Environment> gEnvironment;
+static ComPtr<ICoreWebView2Controller> gController;
+static ComPtr<ICoreWebView2> gView;
+static QvtuConfig gConfig;
+static int gAttempt=0;
+static bool gSubmitted=false;
+static unsigned gElapsed=0;
+static UINT_PTR kPollTimer=1,kCloseTimer=2;
+static constexpr wchar_t kProbe[]=L"http://192.168.120.156/";
+static std::wstring gWebViewFolder;
+
+static std::wstring NewWebViewFolder(){PWSTR p=nullptr;SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&p);std::wstring root=p?std::wstring(p):L".";if(p)CoTaskMemFree(p);root+=L"\\QVTU校园网-cpp\\WebView2\\run-";GUID id{};CoCreateGuid(&id);wchar_t guid[64]{};StringFromGUID2(id,guid,64);root+=guid;fs::create_directories(root);return root;}
+static void CleanupWebViewFolder(){if(gWebViewFolder.empty())return;gView.Reset();if(gController){gController->Close();gController.Reset();}gEnvironment.Reset();for(int i=0;i<8;i++){std::error_code ec;fs::remove_all(gWebViewFolder,ec);if(!fs::exists(gWebViewFolder,ec))break;Sleep(250);}Log(L"WebView2 临时数据清理完成");}
+static void Status(const std::wstring&s){if(gWnd)SetWindowTextW(gWnd,s.c_str());Log(s);}
+static std::wstring JsString(const std::wstring&s){std::wstring r=L"\"";for(wchar_t c:s){if(c==L'"'||c==L'\\'){r+=L'\\';r+=c;}else if(c==L'\n')r+=L"\\n";else if(c==L'\r')r+=L"\\r";else if(c<32||c>126){wchar_t b[8];swprintf_s(b,L"\\u%04x",(unsigned)c);r+=b;}else r+=c;}return r+L'"';}
+static bool ShouldPopup(bool success){return !gConfig.silentLogin||(success?gConfig.showSuccessPopup:gConfig.showFailurePopup);}
+static void Finish(bool ok,const std::wstring&why){KillTimer(gWnd,kPollTimer);if(ok){Log(L"校园网登录成功");if(ShouldPopup(true))MessageBoxW(nullptr,L"校园网登录成功。",L"QVTU 登录",MB_ICONINFORMATION|MB_OK);}else{std::wstring msg=L"登录失败："+why+L"\n已自动刷新并重试一次。\n日志："+LogPath();Log(msg);if(ShouldPopup(false))MessageBoxW(nullptr,msg.c_str(),L"QVTU 登录",MB_ICONWARNING|MB_OK);}PostQuitMessage(0);}
+static void Retry(){KillTimer(gWnd,kPollTimer);if(gAttempt==0){gAttempt=1;gElapsed=0;gSubmitted=false;Status(L"首次尝试未成功，正在刷新重试…");gView->Reload();}else Finish(false,L"第二次尝试仍未成功，请确认 Wi-Fi、账号和密码。");}
+static void Poll();
+static void ScriptDone(HRESULT hr,LPCWSTR result){if(FAILED(hr)){Retry();return;}std::wstring r=result?result:L"";if(r.find(L"QVTU_SUCCESS")!=std::wstring::npos){Finish(true,L"");return;}if(r.find(L"QVTU_ERROR")!=std::wstring::npos){Retry();return;}if(r.find(L"QVTU_FORM")!=std::wstring::npos&&!gSubmitted){gSubmitted=true;std::wstring js=L"(()=>{const u=document.querySelector('#nameInput'),p=document.querySelector('input[type=\\\"password\\\"]'),b=[...document.querySelectorAll('button')].find(x=>(x.innerText||'').includes('立即登录'));if(!u||!p||!b)return 'QVTU_NO_FORM';const set=(e,v)=>{const d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value');d.set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));};set(u,"+JsString(gConfig.username)+L");set(p,"+JsString(gConfig.password)+L");b.click();return 'QVTU_SUBMITTED';})()";Status(L"正在提交校园网认证…");gView->ExecuteScript(js.c_str(),Callback<ICoreWebView2ExecuteScriptCompletedHandler>([](HRESULT h,LPCWSTR r)->HRESULT{if(FAILED(h)||!r||std::wstring(r).find(L"SUBMITTED")==std::wstring::npos){Retry();return S_OK;}gElapsed=0;SetTimer(gWnd,kPollTimer,600,nullptr);return S_OK;}).Get());return;}if(gElapsed>=18000)Retry();else SetTimer(gWnd,kPollTimer,600,nullptr);}
+static void Poll(){if(!gView)return;gElapsed+=600;std::wstring js=L"(()=>{const u=location.href;if(u.includes('portal/entry/pc/finish')||(u.includes('portal/portal-main')&&u.includes('userOnline=true')))return 'QVTU_SUCCESS';const t=(document.body?.innerText||'');if(/密码错误|登录失败|认证失败|用户不存在/.test(t))return 'QVTU_ERROR';if(document.querySelector('#nameInput')&&document.querySelector('input[type=\\\"password\\\"]'))return 'QVTU_FORM';return 'QVTU_WAIT';})()";gView->ExecuteScript(js.c_str(),Callback<ICoreWebView2ExecuteScriptCompletedHandler>([](HRESULT hr,LPCWSTR r)->HRESULT{ScriptDone(hr,r);return S_OK;}).Get());}
+static void BeginWebView(){gWebViewFolder=NewWebViewFolder();std::wstring folder=gWebViewFolder;Status(L"正在打开校园网认证入口…");CreateCoreWebView2EnvironmentWithOptions(nullptr,folder.c_str(),nullptr,Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>([](HRESULT hr,ICoreWebView2Environment*env)->HRESULT{if(FAILED(hr)){Log(L"WebView2 Runtime 初始化失败");if(ShouldPopup(false))MessageBoxW(nullptr,L"WebView2 Runtime 不可用。",L"QVTU 登录",MB_ICONERROR);PostQuitMessage(0);return S_OK;}gEnvironment=env;env->CreateCoreWebView2Controller(gWnd,Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>([](HRESULT hr,ICoreWebView2Controller*ctl)->HRESULT{if(FAILED(hr)){Log(L"创建 WebView2 控制器失败");if(ShouldPopup(false))MessageBoxW(nullptr,L"创建登录页面失败。",L"QVTU 登录",MB_ICONERROR);PostQuitMessage(0);return S_OK;}gController=ctl;gController->get_CoreWebView2(&gView);gView->add_NavigationCompleted(Callback<ICoreWebView2NavigationCompletedEventHandler>([](ICoreWebView2*,ICoreWebView2NavigationCompletedEventArgs*args)->HRESULT{BOOL ok=FALSE;args->get_IsSuccess(&ok);if(!ok){Retry();return S_OK;}LPWSTR source=nullptr;gView->get_Source(&source);std::wstring url=source?source:L"";CoTaskMemFree(source);auto q=url.find(L'?');if(q!=std::wstring::npos)url.resize(q);Log(L"页面导航完成："+url);gElapsed=0;Poll();return S_OK;}).Get(),nullptr);RECT r{};GetClientRect(gWnd,&r);gController->put_Bounds(r);gView->Navigate(kProbe);return S_OK;}).Get());return S_OK;}).Get());}
+static LRESULT CALLBACK Proc(HWND h,UINT m,WPARAM w,LPARAM l){if(m==WM_TIMER&&w==kPollTimer){KillTimer(h,kPollTimer);Poll();return 0;}if(m==WM_SIZE&&gController){RECT r{};GetClientRect(h,&r);gController->put_Bounds(r);return 0;}if(m==WM_DESTROY){PostQuitMessage(0);return 0;}return DefWindowProcW(h,m,w,l);}
+int WINAPI wWinMain(HINSTANCE hi,HINSTANCE,PWSTR,int){if(!LoadConfig(gConfig)){MessageBoxW(nullptr,L"请先运行 QVTLogin_Config.exe 并保存账号。",L"缺少账号设置",MB_ICONWARNING);return 2;}CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);WNDCLASSW wc{};wc.hInstance=hi;wc.lpfnWndProc=Proc;wc.lpszClassName=L"QvtuLoginWindow";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);RegisterClassW(&wc);gWnd=CreateWindowW(wc.lpszClassName,L"QVTU 登录",WS_OVERLAPPEDWINDOW,CW_USEDEFAULT,CW_USEDEFAULT,1000,720,nullptr,nullptr,hi,nullptr);ShowWindow(gWnd,gConfig.silentLogin?SW_HIDE:SW_SHOW);if(gConfig.enableWifiRadio){std::wstring radioError;if(!EnableWifiRadio(radioError))Log(radioError);}std::wstring currentSsid;if(IsWifiConnected(currentSsid)){Log(L"当前已连接 Wi-Fi，保持不变："+currentSsid);BeginWebView();}else if(gConfig.connectCampusWifi){Status(L"当前未连接 Wi-Fi，正在连接校园网…");bool connected=false;std::wstring error;if(!PrepareQvtuWifi(gConfig.fixedWifi?gConfig.fixedSsid:L"",connected,error)){Log(error);if(ShouldPopup(false))MessageBoxW(nullptr,error.c_str(),L"QVTU Wi-Fi 连接失败",MB_ICONWARNING);PostQuitMessage(0);}else BeginWebView();}else{Log(L"当前未连接 Wi-Fi，自动连接未启用");if(ShouldPopup(false))MessageBoxW(nullptr,L"当前未连接 Wi-Fi，且未启用自动连接。",L"没有网络连接",MB_ICONWARNING);PostQuitMessage(0);}MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}KillTimer(gWnd,kPollTimer);CleanupWebViewFolder();CoUninitialize();return (int)msg.wParam;}
