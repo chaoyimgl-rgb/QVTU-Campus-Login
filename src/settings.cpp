@@ -120,7 +120,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         gSsid = CreateWindowW(WC_COMBOBOXW, L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_SSID), nullptr, nullptr);
         HWND wifiRefresh = CreateWindowW(L"BUTTON", L"刷新已保存网络", WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_REFRESHWIFI), nullptr, nullptr);
         gAuto = Check(hwnd, L"登录 Windows 后自动运行", IDC_AUTO);
-        Label(hwnd, L"启动后等待（秒）", 218); gStartWait = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"3", WS_CHILD | WS_VISIBLE | ES_NUMBER, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_STARTWAIT), nullptr, nullptr);
+        Label(hwnd, L"网关检测超时（秒）", 218); gStartWait = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"60", WS_CHILD | WS_VISIBLE | ES_NUMBER, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_STARTWAIT), nullptr, nullptr);
         Label(hwnd, L"首次失败后重试间隔（秒）", 219); gRetryWait = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"6", WS_CHILD | WS_VISIBLE | ES_NUMBER, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_RETRYWAIT), nullptr, nullptr);
         HWND save = CreateWindowW(L"BUTTON", L"保存设置", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_SAVE), nullptr, nullptr);
         HWND test = CreateWindowW(L"BUTTON", L"测试登录", WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_TEST), nullptr, nullptr);
