@@ -4,6 +4,7 @@
 #include <commctrl.h>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 #define IDC_USER 101
 #define IDC_PASS 102
@@ -20,10 +21,12 @@
 #define IDC_FIXED 113
 #define IDC_SSID 114
 #define IDC_REFRESHWIFI 115
+#define IDC_STARTWAIT 116
+#define IDC_RETRYWAIT 117
 
 namespace {
 HWND gUser{}, gPass{}, gAuto{}, gStatus{}, gShowPass{};
-HWND gSilent{}, gPopSuccess{}, gPopFail{}, gWifi{}, gRadio{}, gFixed{}, gSsid{};
+HWND gSilent{}, gPopSuccess{}, gPopFail{}, gWifi{}, gRadio{}, gFixed{}, gSsid{}, gStartWait{}, gRetryWait{};
 HFONT gFont{}, gSmall{}, gTitle{}; int gDpi = 96; std::wstring gSavedSsid;
 
 int Scale(int value) { return MulDiv(value, gDpi, 96); }
@@ -91,9 +94,13 @@ void Layout(HWND hwnd) {
     Move(gSsid, left + 180, 402, field - 180, 28);
     Move(GetDlgItem(hwnd, IDC_REFRESHWIFI), left + 180, 434, field - 180, 28);
     Move(gAuto, left, 470, field, 24);
-    Move(GetDlgItem(hwnd, IDC_SAVE), left + field - 230, 510, 110, 34);
-    Move(GetDlgItem(hwnd, IDC_TEST), left + field - 110, 510, 110, 34);
-    Move(gStatus, left, 552, field, 24);
+    Move(GetDlgItem(hwnd, 218), left, 500, 190, 22);
+    Move(gStartWait, left + 195, 496, 70, 28);
+    Move(GetDlgItem(hwnd, 219), left + 280, 500, 210, 22);
+    Move(gRetryWait, left + 470, 496, 70, 28);
+    Move(GetDlgItem(hwnd, IDC_SAVE), left + field - 230, 542, 110, 34);
+    Move(GetDlgItem(hwnd, IDC_TEST), left + field - 110, 542, 110, 34);
+    Move(gStatus, left, 586, field, 24);
     (void)width;
 }
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -113,11 +120,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         gSsid = CreateWindowW(WC_COMBOBOXW, L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_SSID), nullptr, nullptr);
         HWND wifiRefresh = CreateWindowW(L"BUTTON", L"刷新已保存网络", WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_REFRESHWIFI), nullptr, nullptr);
         gAuto = Check(hwnd, L"登录 Windows 后自动运行", IDC_AUTO);
+        Label(hwnd, L"启动后等待（秒）", 218); gStartWait = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"3", WS_CHILD | WS_VISIBLE | ES_NUMBER, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_STARTWAIT), nullptr, nullptr);
+        Label(hwnd, L"首次失败后重试间隔（秒）", 219); gRetryWait = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"6", WS_CHILD | WS_VISIBLE | ES_NUMBER, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_RETRYWAIT), nullptr, nullptr);
         HWND save = CreateWindowW(L"BUTTON", L"保存设置", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_SAVE), nullptr, nullptr);
         HWND test = CreateWindowW(L"BUTTON", L"测试登录", WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, hwnd, reinterpret_cast<HMENU>(IDC_TEST), nullptr, nullptr);
         gStatus = Label(hwnd, L"Wi-Fi 连接只使用 Windows 已保存的 QVTU_ 网络。", IDC_STATUS); SendMessageW(gStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gSmall), TRUE);
-        for (HWND control : {gUser, gPass, gShowPass, gSilent, gPopSuccess, gPopFail, gWifi, gRadio, gFixed, gSsid, gAuto, wifiRefresh, save, test}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(gFont), TRUE);
-        QvtuConfig c; if (LoadConfig(c)) { gSavedSsid = c.fixedSsid; Put(gUser, c.username.c_str()); Put(gPass, c.password.c_str()); SendMessageW(gSilent, BM_SETCHECK, c.silentLogin, 0); SendMessageW(gPopSuccess, BM_SETCHECK, c.showSuccessPopup, 0); SendMessageW(gPopFail, BM_SETCHECK, c.showFailurePopup, 0); SendMessageW(gWifi, BM_SETCHECK, c.connectCampusWifi, 0); SendMessageW(gRadio, BM_SETCHECK, c.enableWifiRadio, 0); SendMessageW(gFixed, BM_SETCHECK, c.fixedWifi, 0); SendMessageW(gAuto, BM_SETCHECK, c.autostart, 0); }
+        for (HWND control : {gUser, gPass, gShowPass, gSilent, gPopSuccess, gPopFail, gWifi, gRadio, gFixed, gSsid, gAuto, wifiRefresh, save, test, gStartWait, gRetryWait}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(gFont), TRUE);
+        QvtuConfig c; if (LoadConfig(c)) { gSavedSsid = c.fixedSsid; Put(gUser, c.username.c_str()); Put(gPass, c.password.c_str()); SendMessageW(gSilent, BM_SETCHECK, c.silentLogin, 0); SendMessageW(gPopSuccess, BM_SETCHECK, c.showSuccessPopup, 0); SendMessageW(gPopFail, BM_SETCHECK, c.showFailurePopup, 0); SendMessageW(gWifi, BM_SETCHECK, c.connectCampusWifi, 0); SendMessageW(gRadio, BM_SETCHECK, c.enableWifiRadio, 0); SendMessageW(gFixed, BM_SETCHECK, c.fixedWifi, 0); SendMessageW(gAuto, BM_SETCHECK, c.autostart, 0); Put(gStartWait, std::to_wstring(c.startupWaitSeconds).c_str()); Put(gRetryWait, std::to_wstring(c.retryWaitSeconds).c_str()); }
         RefreshWifiList(); Layout(hwnd); EnableOptions(); return 0;
     }
     case WM_SIZE: Layout(hwnd); return 0;
@@ -127,7 +136,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         if (LOWORD(wParam) == IDC_SSID && HIWORD(wParam) == CBN_DROPDOWN) { RefreshWifiList(); return 0; }
         if (LOWORD(wParam) == IDC_REFRESHWIFI) { RefreshWifiList(); UpdateStatus(L"已刷新 Windows 保存的 QVTU_ 网络"); return 0; }
         if (LOWORD(wParam) == IDC_SAVE || LOWORD(wParam) == IDC_TEST) {
-            QvtuConfig c; c.username = ReadText(gUser); c.password = ReadText(gPass); c.autostart = SendMessageW(gAuto, BM_GETCHECK, 0, 0) == BST_CHECKED; c.silentLogin = SendMessageW(gSilent, BM_GETCHECK, 0, 0) == BST_CHECKED; c.showSuccessPopup = SendMessageW(gPopSuccess, BM_GETCHECK, 0, 0) == BST_CHECKED; c.showFailurePopup = SendMessageW(gPopFail, BM_GETCHECK, 0, 0) == BST_CHECKED; c.connectCampusWifi = SendMessageW(gWifi, BM_GETCHECK, 0, 0) == BST_CHECKED; c.enableWifiRadio = SendMessageW(gRadio, BM_GETCHECK, 0, 0) == BST_CHECKED; c.fixedWifi = SendMessageW(gFixed, BM_GETCHECK, 0, 0) == BST_CHECKED; int selected = static_cast<int>(SendMessageW(gSsid, CB_GETCURSEL, 0, 0)); if (selected >= 0) { wchar_t value[256]{}; SendMessageW(gSsid, CB_GETLBTEXT, selected, reinterpret_cast<LPARAM>(value)); c.fixedSsid = value; } gSavedSsid = c.fixedSsid;
+            QvtuConfig c; c.username = ReadText(gUser); c.password = ReadText(gPass); c.autostart = SendMessageW(gAuto, BM_GETCHECK, 0, 0) == BST_CHECKED; c.silentLogin = SendMessageW(gSilent, BM_GETCHECK, 0, 0) == BST_CHECKED; c.showSuccessPopup = SendMessageW(gPopSuccess, BM_GETCHECK, 0, 0) == BST_CHECKED; c.showFailurePopup = SendMessageW(gPopFail, BM_GETCHECK, 0, 0) == BST_CHECKED; c.connectCampusWifi = SendMessageW(gWifi, BM_GETCHECK, 0, 0) == BST_CHECKED; c.enableWifiRadio = SendMessageW(gRadio, BM_GETCHECK, 0, 0) == BST_CHECKED; c.fixedWifi = SendMessageW(gFixed, BM_GETCHECK, 0, 0) == BST_CHECKED; c.startupWaitSeconds = std::clamp(_wtoi(ReadText(gStartWait).c_str()), 0, 300); c.retryWaitSeconds = std::clamp(_wtoi(ReadText(gRetryWait).c_str()), 1, 300); int selected = static_cast<int>(SendMessageW(gSsid, CB_GETCURSEL, 0, 0)); if (selected >= 0) { wchar_t value[256]{}; SendMessageW(gSsid, CB_GETLBTEXT, selected, reinterpret_cast<LPARAM>(value)); c.fixedSsid = value; } gSavedSsid = c.fixedSsid;
             if (c.username.empty() || c.password.empty()) { MessageBoxW(hwnd, L"请填写学工号和密码。", L"信息不完整", MB_ICONWARNING); return 0; }
             if (!SaveConfig(c) || !SetAutostart(c.autostart, LoginExePath())) { MessageBoxW(hwnd, L"保存失败，请确认 QVTLogin.exe 与 QVTLogin_Config.exe 位于同一安装目录。", L"保存失败", MB_ICONERROR); return 0; }
             if (LOWORD(wParam) == IDC_SAVE) { UpdateStatus(L"设置已保存"); return 0; }
