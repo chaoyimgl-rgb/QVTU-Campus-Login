@@ -13,7 +13,7 @@ struct QvtuConfig {
     bool enableWifiRadio = true;
     bool fixedWifi = false;
     std::wstring fixedSsid;
-    int startupWaitSeconds = 3;
+    int startupWaitSeconds = 60;
     int retryWaitSeconds = 6;
 };
 std::wstring AppDir();
