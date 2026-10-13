@@ -38,3 +38,26 @@ config.dat
 # Installer artifacts
 installer/staging/
 installer/output/
+
+# Android local tooling, generated outputs and private data
+.gradle/
+.idea/
+.cxx/
+local.properties
+*.apk
+*.aab
+*.dex
+*.class
+*.keystore
+*.jks
+key.properties
+signing.properties
+.env
+.env.*
+android-lite/diagnostics/
+android-lite/logs/
+android-lite/prefs/
+android-lite/shared_prefs/
+android-lite/device-data/
+/release-assets/
+# gradle/wrapper/gradle-wrapper.jar is intentionally tracked.

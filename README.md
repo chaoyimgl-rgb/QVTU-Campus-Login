@@ -1,95 +1,24 @@
-# QVTU Campus Login for Windows x64
+# QVTU Campus Login — Android 轻守护
 
-这是面向泉州职业技术大学校园网环境的 Windows x64 登录工具。程序使用原生 C++、Windows WLAN API 和 Microsoft Edge WebView2 Runtime。
+泉州职业技术大学校园网 Android 低占用试用版，原生 Java + 系统 WebView，无 AndroidX / Compose / 第三方运行时依赖。最低 Android 8.0（API 26），当前版本 **1.2（versionCode 3）**。
 
-## 安装包
+## 分支与下载
 
-安装包包含两个程序：
+- [`master`](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/tree/master)：Windows x64 C++ / WebView2 项目及其说明。
+- [`android`](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/tree/android)：新增独立 [`android-lite`](android-lite) 项目；原 Windows 源码、构建脚本和安装器保留，不参与安卓构建。
+- [Android v1.2.0 预发布与 SHA-256](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/releases/tag/android-v1.2.0)
+- [下载 APK](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/releases/download/android-v1.2.0/QVTU-Campus-Login-Android-v1.2.0.apk)
 
-- `QVTLogin_Config.exe`：安装在 `C:\Program Files\QVTU Campus Login\`，用于配置账号、登录行为、QVTU Wi-Fi 和启动项。
-- `QVTLogin.exe`：安装目录保留一份，并把同一程序复制到当前用户 Startup 文件夹，供 Windows 用户登录后自动运行。
+APK 是 **debug 签名测试版，不是正式 release signing**。本次沿用已在用户手机安装的签名，没有发布私钥。自行构建通常使用自己的 debug 签名，不能保证覆盖安装此附件；卸载会丢失应用设置。
 
-安装器 `installer\output\QVTU-Campus-Login-Setup-x64.exe` 安装到 Program Files；安装和卸载均清理 Startup 中的登录程序副本及旧 Run 注册表值。
+## 使用与验证
 
-## 系统要求
+手动连接校园 Wi-Fi → 保存学校 SSO 账号、密码 → 允许通知 → 开始守护。默认每 120 秒通过所选 Wi-Fi 探测，必要时使用系统 WebView 认证；应用不自动连接 Wi-Fi、不管理热点。
 
-- Windows 10/11 x64
-- Microsoft Edge WebView2 Runtime
-- WLAN AutoConfig 服务和可用无线网卡（使用自动 Wi-Fi 连接时）
-- 校园网 Wi-Fi 已经在 Windows 系统中保存过 profile
+用户已确认 Redmi K20 Pro / Android 15 真机使用成功。干净源码构建 `assembleDebug` / `lintDebug` 成功，53 项策略测试通过，Lint 为 0 errors / 7 warnings。APK 62,770 字节。**未做夜间保活、长期 Doze、开机恢复或功耗实测，不承诺半夜不断线。**
 
-WebView2 Runtime 不随安装包携带，请从微软官方渠道安装 Evergreen Runtime。程序不保存或读取 Wi-Fi 密码，只使用 Windows 已保存的 `QVTU` 开头网络。
+HTTP 网关有链路安全风险；Keystore 只保护本地密码存储。debug APK 保留可由显式 Activity action 触发的诊断及单次认证测试入口，不能视作生产加固版本。Wi-Fi 与热点同时工作依赖手机硬件和系统。完整认证流程、安全边界、构建命令、测试及已知限制见 [Android 说明](android-lite/README.md)。
 
-## 配置
+## 许可
 
-运行 `QVTLogin_Config.exe`：
-
-- 输入校园网学工号和密码；
-- 选择是否静默登录；
-- 选择成功/失败通知；
-- 独立选择是否尝试开启 Wi-Fi 无线电；
-- 选择是否在没有 Wi-Fi 连接时自动连接 QVTU 网络；
-- 按信号选择或固定一个已保存的 QVTU 网络；
-- 选择是否开机自动运行；启用后，Windows 用户登录时会从 Startup 启动 `QVTLogin.exe`。
-- 设置网关检测超时时间，默认 60 秒；Wi-Fi 已连接但网关尚未准备好时持续检测，不会立即失败。
-- 设置首次失败后的重试间隔，默认 6 秒；首次失败后只重试一次。
-
-账号配置位于：
-
-```text
-%APPDATA%\QVTU校园网-cpp\config.dat
-```
-
-密码使用当前 Windows 用户的 DPAPI 加密。换 Windows 用户后不能直接迁移该配置，应重新配置。
-
-日志位于：
-
-```text
-%APPDATA%\QVTU校园网-cpp\autologin.log
-```
-
-WebView2 登录临时数据位于 `%LOCALAPPDATA%\QVTU校园网-cpp\WebView2\` 的单次运行目录，程序退出后会尝试删除，不会写入安装目录。Wi-Fi 连接后程序会立即打开网关探测页，持续等待登录页或已登录门户真正出现；网关未就绪不会立即判失败，默认最多检测 60 秒。首次认证失败后默认等待 6 秒再刷新重试；这两个时间可在设置界面调整。
-
-## 构建
-
-需要：
-
-- Visual Studio Desktop development with C++
-- MSVC x64 工具链
-- Windows SDK
-- CMake 3.24+
-- WebView2 Native SDK NuGet 包
-
-先设置 WebView2 SDK 路径：
-
-```bat
-set WEBVIEW2_SDK=%USERPROFILE%\.nuget\packages\microsoft.web.webview2\1.0.2903.40\build\native
-```
-
-再运行：
-
-```bat
-build_win64.bat
-```
-
-输出：
-
-```text
-build\bin\Release\QVTLogin_Config.exe
-build\bin\Release\QVTLogin.exe
-```
-
-## 安装器构建
-
-安装器脚本位于 `installer\QVTUCampusLogin.iss`。需要安装 Inno Setup 6，并先把两个 EXE 放入：
-
-```text
-installer\staging\QVTLogin_Config.exe
-installer\staging\QVTLogin.exe
-```
-
-使用 Inno Setup Compiler 打开 `.iss` 后编译即可生成 `setup.exe`。
-
-## 兼容范围
-
-登录流程针对当前校园网门户实现，使用网关 `http://192.168.120.156/`、当前登录页 DOM 和成功跳转页面。校园网门户改版、域名/IP 或页面字段变化后，程序可能需要更新。
+项目沿用 [MIT License](LICENSE)。Gradle Wrapper 为 Apache-2.0，保留原脚本许可头与 JAR 内许可，完整文本见 [Gradle Wrapper LICENSE](android-lite/gradle/wrapper/LICENSE)。
