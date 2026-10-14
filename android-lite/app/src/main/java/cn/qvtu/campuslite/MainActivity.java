@@ -19,7 +19,7 @@ import android.widget.*;
 public final class MainActivity extends Activity {
     private cn.qvtu.campuslite.Settings config;
     private EditText account, password;
-    private TextView status;
+    private TextView status, backgroundStatus, recentEvents;
     private Spinner interval;
     private CheckBox experimental;
     private final android.content.SharedPreferences.OnSharedPreferenceChangeListener listener = (p, key) -> {
@@ -30,7 +30,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         config = new cn.qvtu.campuslite.Settings(this);
-        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (BuildConfig.DEBUG
                 && ("portal.diagnose".equals(getIntent().getAction()) || "portal.testOnce".equals(getIntent().getAction()))) {
             config.enabled(false);
             stopService(new Intent(this, GuardService.class));
@@ -78,10 +78,28 @@ public final class MainActivity extends Activity {
         button(actions, "立即认证", () -> { if (GuardService.isRunning() || save(false)) { requestNotification(); launch(GuardService.NOW); } });
         LinearLayout system = card(root); system.addView(text("系统与限制", 20));
         button(system, "通知权限", this::requestNotification);
+        backgroundStatus = text("", 14); system.addView(backgroundStatus);
+        button(system, "申请本应用电池优化豁免", () -> new android.app.AlertDialog.Builder(this)
+                .setTitle("核心常驻认证需要后台网络")
+                .setMessage("仅当您需要夜间校园 Wi-Fi 监测及认证时，请主动申请本应用电池优化豁免。可能增加耗电，不保证准时轮询或永不被杀；厂商后台限制仍需另行检查。不改变全局设置。")
+                .setNegativeButton("取消", null).setPositiveButton("打开系统授权", (d, w) ->
+                        open(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())))).show());
         button(system, "电池优化设置", () -> open(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)));
         button(system, "应用设置", () -> open(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
         system.addView(text("不会自动连接 Wi-Fi 或改变热点。Wi-Fi 与热点能否并行取决于手机硬件。普通前台服务不保证 Doze 中及时检测；厂商可能限制后台、重启恢复。仅手动开启过守护才尝试开机恢复。尚未真机门户验证，不承诺半夜不断线。", 14));
+        LinearLayout logs = card(root); logs.addView(text("本地观测日志", 20));
+        logs.addView(text("只记录时间、状态及数字，不记录账号、密码、Cookie、SSID 或设备 IP。最多 3 × 256 KiB，到上限轮转最旧文件。网络失败不等于路由器重启，休眠期间可能漏测。导出文件由您选择保存位置，不自动上传。", 14));
+        recentEvents = text("", 12); logs.addView(recentEvents);
+        button(logs, "刷新最近事件", () -> recentEvents.setText(EventLog.get(this).recent()));
+        button(logs, "导出观测日志", () -> {
+            Intent export = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("text/tab-separated-values").putExtra(Intent.EXTRA_TITLE, "campus-observation.tsv");
+            try { startActivityForResult(export, 20); } catch (RuntimeException e) { toast("系统未提供文件保存器"); }
+        });
         setContentView(scroll); refresh();
+        // Package replacement stops the old process/service but preserves user intent.
+        // Restore only an already enabled guard from this visible Activity; no exported command.
+        if (config.enabled() && !GuardService.isRunning()) launch(GuardService.START);
     }
     private TextView text(String value, int size) { TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setTextColor(Color.rgb(32, 43, 61)); view.setPadding(0, dp(6), 0, dp(6)); return view; }
     private LinearLayout card(LinearLayout root) {
@@ -116,6 +134,23 @@ public final class MainActivity extends Activity {
     }
     private void open(Intent intent) { try { startActivity(intent); } catch (RuntimeException e) { toast("系统未提供该设置入口"); } }
     private void toast(String value) { Toast.makeText(this, value, Toast.LENGTH_LONG).show(); }
-    @Override protected void onResume() { super.onResume(); config.prefs.registerOnSharedPreferenceChangeListener(listener); refresh(); }
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request == 20 && result == RESULT_OK && data != null && data.getData() != null) {
+            final android.content.Context app = getApplicationContext();
+            final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+            EventLog.get(this).export(data.getData(), ok -> handler.post(() ->
+                    Toast.makeText(app, ok ? "日志快照已导出" : "导出失败；请重试", Toast.LENGTH_LONG).show()));
+        }
+    }
+    private void backgroundState() {
+        if (backgroundStatus == null) return;
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        android.app.ActivityManager am = getSystemService(android.app.ActivityManager.class);
+        String restricted = Build.VERSION.SDK_INT >= 28 ? (am.isBackgroundRestricted() ? "受限制" : "系统 API 未报告限制") : "本系统 API 不支持查询";
+        backgroundStatus.setText("电池优化豁免：" + (pm.isIgnoringBatteryOptimizations(getPackageName()) ? "已豁免" : "未豁免")
+                + "\n后台限制：" + restricted + "\n厂商自启动/省电策略无法完整检测。豁免不保证 Handler 在深度休眠中按时运行。");
+    }
+    @Override protected void onResume() { super.onResume(); config.prefs.registerOnSharedPreferenceChangeListener(listener); refresh(); backgroundState(); if (recentEvents != null) recentEvents.setText(EventLog.get(this).recent()); }
     @Override protected void onPause() { config.prefs.unregisterOnSharedPreferenceChangeListener(listener); super.onPause(); }
 }

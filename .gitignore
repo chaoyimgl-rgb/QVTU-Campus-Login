@@ -50,6 +50,8 @@ local.properties
 *.class
 *.keystore
 *.jks
+*.p12
+*.pfx
 key.properties
 signing.properties
 .env

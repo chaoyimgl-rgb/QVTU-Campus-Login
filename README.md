@@ -1,23 +1,32 @@
 # QVTU Campus Login — Android 轻守护
 
-泉州职业技术大学校园网 Android 低占用试用版，原生 Java + 系统 WebView，无 AndroidX / Compose / 第三方运行时依赖。最低 Android 8.0（API 26），当前版本 **1.2（versionCode 3）**。
+泉州职业技术大学校园网 Android 低占用试用版，原生 Java + 系统 WebView，无 AndroidX / Compose / 第三方运行时依赖。最低 Android 8.0（API 26），当前预发布版本 **1.3.1（versionCode 5）**。使用 R8 与资源收缩的正式 release 签名，仍在夜间验证中。
 
 ## 分支与下载
 
-- [`master`](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/tree/master)：Windows x64 C++ / WebView2 项目及其说明。
-- [`android`](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/tree/android)：新增独立 [`android-lite`](android-lite) 项目；原 Windows 源码、构建脚本和安装器保留，不参与安卓构建。
-- [Android v1.2.0 预发布与 SHA-256](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/releases/tag/android-v1.2.0)
-- [下载 APK](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/releases/download/android-v1.2.0/QVTU-Campus-Login-Android-v1.2.0.apk)
+- [`master`](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/tree/master)：Windows x64 C++ / WebView2 项目及其说明；Windows 最新正式发布仍为 v1.0.3。
+- [`android`](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/tree/android)：独立 [`android-lite`](android-lite) 项目；保留的 Windows 源码、构建脚本和安装器不参与安卓构建。
+- [Android v1.3.1 预发布与 SHA-256](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/releases/tag/android-v1.3.1)
+- [下载正式签名 APK](https://github.com/chaoyimgl-rgb/QVTU-Campus-Login/releases/download/android-v1.3.1/QVTU-Campus-Login-Android-v1.3.1.apk)
 
-APK 是 **debug 签名测试版，不是正式 release signing**。本次沿用已在用户手机安装的签名，没有发布私钥。自行构建通常使用自己的 debug 签名，不能保证覆盖安装此附件；卸载会丢失应用设置。
+**升级警告：历史 android-v1.2.0 附件为 debug 签名，与本次正式 release 签名不同，无法原地覆盖。** 旧 debug 用户需自行停止旧守护、备份所需日志，确认卸载会丢失设置后卸载重装，并重新输入凭据；不迁移或导出密码，不自动卸载。已安装同正式签名 1.3 / 1.3.1 的用户可覆盖升级。自行构建签名不同也不能保证覆盖。
 
-## 使用与验证
+## 功能与修复
 
-手动连接校园 Wi-Fi → 保存学校 SSO 账号、密码 → 允许通知 → 开始守护。默认每 120 秒通过所选 Wi-Fi 探测，必要时使用系统 WebView 认证；应用不自动连接 Wi-Fi、不管理热点。
+手动连接校园 Wi-Fi → 保存学校 SSO 账号、密码 → 允许通知 → 开始守护。默认 120 秒，可选 60 / 300 秒。应用不自动连接 Wi-Fi、不管理热点。
 
-用户已确认 Redmi K20 Pro / Android 15 真机使用成功。干净源码构建 `assembleDebug` / `lintDebug` 成功，53 项策略测试通过，Lint 为 0 errors / 7 warnings。APK 62,770 字节。**未做夜间保活、长期 Doze、开机恢复或功耗实测，不承诺半夜不断线。**
+- 所选 Wi-Fi 专用 HTTPS 探测结合校园门户核实，不再凭单一公网 204 跳过认证检查；未知 HTML/JS 页面由按需 WebView 核实。
+- 临时网络/门户失败保留普通守护，按 60/120/240/480/900 秒退避；明确密码错误/用户不存在停止。修复退避启动时缺少后续检查调度。
+- 私有滚动观测日志最多 3 × 256 KiB，仅事件枚举与数字，不含凭据；通过 SAF 手动导出。显示后台限制/电池优化状态，提供用户主动豁免入口。
+- 当前轻量门户核实未知时，在线轮次也短暂启动 WebView，约一秒后释放；无常驻渲染、无常驻锁，不代表已验证低耗电。
 
-HTTP 网关有链路安全风险；Keystore 只保护本地密码存储。debug APK 保留可由显式 Activity action 触发的诊断及单次认证测试入口，不能视作生产加固版本。Wi-Fi 与热点同时工作依赖手机硬件和系统。完整认证流程、安全边界、构建命令、测试及已知限制见 [Android 说明](android-lite/README.md)。
+## 验证与边界
+
+141 项纯 Java 测试通过（策略 53、观测 45、假网络/时间决策 43）；`assembleDebug / assembleRelease / lintDebug / lintRelease` 成功，两种 Lint 各 0 errors / 7 warnings。正式 APK **33,396 字节**；版本 1.3.1 / code 5，v2 签名验证通过，`debuggable=false`，DEX 不含 release 调试认证入口。
+
+用户现有真机在线两轮定时检查已完成门户核实、204 复核、释放资源和再次调度，无新增 crash；没有提交密码，**未验证真实掉线后端到端恢复、夜间保活、长期 Doze、重启恢复或功耗**。Doze/厂商限制可能延迟检查，豁免也不保证准时或半夜不断线。R8/资源收缩不等于 Google 后台优化。
+
+HTTP 网关有链路安全风险；Keystore 只保护本地密码存储。完整认证流程、安全边界、构建命令、日志格式和版本变更见 [Android 说明](android-lite/README.md)。
 
 ## 许可
 
